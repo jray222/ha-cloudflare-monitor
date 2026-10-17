@@ -90,6 +90,12 @@ Copy `custom_components/cloudflare_monitor` into your Home Assistant `config/cus
 
 `blueprints/automation/cloudflare_monitor/new_ip_alert.yaml` sends the alert to your phone with **Block IP** and **Looks fine** buttons. Import it from **Settings > Automations & scenes > Blueprints > Import blueprint** with the file's GitHub URL, then create an automation from it and pick your phone.
 
+## Privacy and security
+- Your Cloudflare token (and ipinfo token, if you add one) is stored only in Home Assistant's own config storage, like every other integration's credentials. It is never written to logs, events or notifications.
+- The only outside service besides Cloudflare is ipinfo.io, which receives each **new** visitor IP once to look up its location. Private addresses are never sent.
+- Text that comes from visitors or third parties (user agents, reverse DNS names, ISP names, emails) is shown literally in notifications, so it can't inject links or images.
+- The list of known IPs, recent alerts and tunnel backups is kept in Home Assistant's `.storage` folder and deleted when you remove the integration.
+
 ## Limits worth knowing
 - Cloudflare's tunnel visitor analytics can lag a few minutes, and how far back you can query depends on your plan. On plans that only allow short windows the first check looks back 1 hour instead of 24.
 - Very busy hostnames: each check reads up to 2,000 IP/hostname combinations.

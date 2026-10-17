@@ -30,10 +30,11 @@ async def lookup_ip(
     """
     if not is_public_ip(ip):
         return {"note": "private or reserved address"}
-    params = {"token": token} if token else None
+    # Token goes in a header, not the URL, so it never ends up in error logs
+    headers = {"Authorization": f"Bearer {token}"} if token else None
     try:
         async with session.get(
-            f"https://ipinfo.io/{ip}/json", params=params, timeout=TIMEOUT
+            f"https://ipinfo.io/{ip}/json", headers=headers, timeout=TIMEOUT
         ) as resp:
             if resp.status != 200:
                 _LOGGER.debug("ipinfo.io returned %s for %s", resp.status, ip)

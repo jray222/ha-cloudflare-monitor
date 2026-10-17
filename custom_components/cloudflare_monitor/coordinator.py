@@ -470,6 +470,10 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
         now_iso = dt_util.utcnow().isoformat()
 
         for s in sightings:
+            try:
+                ipaddress.ip_address(s.ip)
+            except ValueError:
+                continue  # never put something that is not an IP into links or rules
             key = f"{s.source_type}:{s.source_id}|{s.ip}" if per_source else s.ip
             # Connector IPs are always tracked per tunnel: a new one is notable
             if s.source_type == SOURCE_CONNECTOR:
@@ -621,31 +625,43 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
         return len(keys)
 
 
+def _code(value: Any) -> str:
+    """Show outside text (user agents, reverse DNS, emails) literally.
+
+    These values come from visitors or third parties, so they are put in an
+    inline code span: Markdown links, images and formatting in them never render.
+    """
+    text = " ".join(str(value).split()).replace("`", "'")[:200]
+    return f"`{text}`"
+
+
 def _notification_text(e: dict[str, Any]) -> str:
     place = ", ".join(p for p in (e["city"], e["region"], e["country"]) if p) or "unknown"
+    title = f"**{e['source']}** on {_code(e['name'])}"
+    if e["hostname"] and e["hostname"] != e["name"]:
+        title += f" ({_code(e['hostname'])})"
     lines = [
-        f"**{e['source']}** on **{e['name']}**"
-        + (f" ({e['hostname']})" if e["hostname"] and e["hostname"] != e["name"] else ""),
+        title,
         "",
-        f"- IP: `{e['ip']}`" + (" (already blocked)" if e["already_blocked"] else ""),
-        f"- Location: {place}",
+        f"- IP: {_code(e['ip'])}" + (" (already blocked)" if e["already_blocked"] else ""),
+        f"- Location: {_code(place)}",
     ]
     if e["isp"]:
-        lines.append(f"- Network: {e['isp']}")
+        lines.append(f"- Network: {_code(e['isp'])}")
     if e["reverse_dns"]:
-        lines.append(f"- Reverse DNS: {e['reverse_dns']}")
+        lines.append(f"- Reverse DNS: {_code(e['reverse_dns'])}")
     if e["user_email"]:
-        lines.append(f"- User: {e['user_email']}")
+        lines.append(f"- User: {_code(e['user_email'])}")
     if e["login_allowed"] is not None:
         lines.append(f"- Login: {'allowed' if e['login_allowed'] else 'DENIED'}")
     if e["source_type"] == SOURCE_TUNNEL:
         lines.append(f"- Requests: {e['requests']}, status codes {e['http_statuses']}")
         for agent in e["user_agents"]:
-            lines.append(f"- Browser/app: {agent}")
+            lines.append(f"- Browser/app: {_code(agent)}")
     if e.get("colo"):
-        lines.append(f"- Cloudflare data center: {e['colo']}")
+        lines.append(f"- Cloudflare data center: {_code(e['colo'])}")
     lines += [
-        f"- Seen: {e['seen_at']}",
+        f"- Seen: {_code(e['seen_at'])}",
         "",
         f"[AbuseIPDB report]({e['abuseipdb_url']}) · [ipinfo]({e['ipinfo_url']})",
         "",

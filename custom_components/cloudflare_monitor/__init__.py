@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
 from .api import CloudflareClient, CloudflareError
@@ -133,3 +134,8 @@ async def _options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: CloudflareMonitorConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Delete the saved IP history and tunnel backups when the integration is removed."""
+    await Store(hass, 1, f"{DOMAIN}.{entry.entry_id}").async_remove()

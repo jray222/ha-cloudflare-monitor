@@ -22,7 +22,7 @@ def ok(result, pages=1):
 
 
 def mock_cloudflare(mock: AiohttpClientMocker, logins: list, visitors: list) -> None:
-    mock.get(f"{API}/accounts", json=ok([{"id": ACCT, "name": "John"}]))
+    mock.get(f"{API}/accounts", json=ok([{"id": ACCT, "name": "Home"}]))
     mock.get(
         f"{API}/accounts/{ACCT}/cfd_tunnel",
         json=ok(
@@ -67,7 +67,7 @@ def mock_cloudflare(mock: AiohttpClientMocker, logins: list, visitors: list) -> 
 
 def login(ip: str, when: str, allowed: bool = True) -> dict:
     return {
-        "ip_address": ip, "user_email": "john@example.com", "app_uid": APP,
+        "ip_address": ip, "user_email": "user@example.com", "app_uid": APP,
         "app_domain": "ha.example.com", "allowed": allowed, "created_at": when,
         "connection": "google", "action": "login", "ray_id": "abc",
     }
@@ -91,14 +91,14 @@ async def test_config_flow(hass: HomeAssistant, aioclient_mock: AiohttpClientMoc
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"api_token": "tok"})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"]["account_id"] == ACCT
-    assert result["title"] == "John"
+    assert result["title"] == "Home"
 
 
 async def test_new_ip_alert_and_actions(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
     mock_cloudflare(aioclient_mock, [login("192.0.2.1", "2026-10-17T09:00:00Z")], [visitor("192.0.2.2")])
     entry = MockConfigEntry(
         domain=DOMAIN, unique_id=ACCT,
-        data={"api_token": "tok", "account_id": ACCT, "account_name": "John"},
+        data={"api_token": "tok", "account_id": ACCT, "account_name": "Home"},
     )
     entry.add_to_hass(hass)
     events = async_capture_events(hass, EVENT_NEW_IP)
@@ -107,7 +107,7 @@ async def test_new_ip_alert_and_actions(hass: HomeAssistant, aioclient_mock: Aio
 
     # First poll only learns what is already there
     assert events == []
-    assert hass.states.get("sensor.cloudflare_john_known_ips").state == "3"
+    assert hass.states.get("sensor.cloudflare_home_known_ips").state == "3"
     assert hass.states.get("binary_sensor.tunnel_home_connected").state == "on"
     assert hass.states.get("sensor.access_app_home_assistant_last_login_ip").state == "192.0.2.1"
 
@@ -127,9 +127,9 @@ async def test_new_ip_alert_and_actions(hass: HomeAssistant, aioclient_mock: Aio
     assert data["city"] == "Lisbon"
     assert data["isp"] == "AS1234 Example ISP"
     assert data["login_allowed"] is False
-    assert data["user_email"] == "john@example.com"
-    assert hass.states.get("sensor.cloudflare_john_last_new_ip").state == "81.2.69.160"
-    assert hass.states.get("sensor.cloudflare_john_denied_logins_last_24_hours").state == "1"
+    assert data["user_email"] == "user@example.com"
+    assert hass.states.get("sensor.cloudflare_home_last_new_ip").state == "81.2.69.160"
+    assert hass.states.get("sensor.cloudflare_home_denied_logins_last_24_hours").state == "1"
     assert len(hass.states.async_all("persistent_notification")) >= 0
 
     # Block the IP
@@ -157,3 +157,24 @@ async def test_new_ip_alert_and_actions(hass: HomeAssistant, aioclient_mock: Aio
     puts = [c for c in aioclient_mock.mock_calls if c[0] == "PUT"]
     assert puts[-1][2]["config"]["ingress"][0]["hostname"] == "ha.example.com"
     assert hass.states.get("binary_sensor.tunnel_home_disabled_from_home_assistant").state == "off"
+
+
+def test_notification_shows_outside_text_literally() -> None:
+    """A hostile user agent or reverse DNS name must not render as a link or image."""
+    from custom_components.cloudflare_monitor.coordinator import _notification_text
+
+    text = _notification_text(
+        {
+            "source": "Tunnel visitor", "source_type": "tunnel_visitor", "name": "home",
+            "hostname": "ha.example.com", "ip": "81.2.69.160", "already_blocked": False,
+            "city": "", "region": "", "country": "PT",
+            "isp": "AS1 [click](https://evil.example)", "reverse_dns": "![x](https://evil.example/t.png)",
+            "user_email": "", "login_allowed": None, "requests": 1, "http_statuses": [200],
+            "user_agents": ["`code` breaker\n# heading"], "seen_at": "2026-10-17T11:00:00Z",
+            "abuseipdb_url": "https://www.abuseipdb.com/check/81.2.69.160",
+            "ipinfo_url": "https://ipinfo.io/81.2.69.160",
+        }
+    )
+    assert "`AS1 [click](https://evil.example)`" in text
+    assert "`![x](https://evil.example/t.png)`" in text
+    assert "`'code' breaker # heading`" in text
