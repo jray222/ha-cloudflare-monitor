@@ -1,3 +1,5 @@
+<p align="center"><img src="images/banner.png" alt="Cloudflare Monitor for Home Assistant" width="100%"></p>
+
 # Cloudflare Monitor for Home Assistant
 
 Tells you when a new IP address shows up on your Cloudflare Tunnels or Cloudflare Access apps, shows where it comes from, and lets you block it, lock an app, or switch a tunnel off from Home Assistant.
@@ -100,3 +102,6 @@ Copy `custom_components/cloudflare_monitor` into your Home Assistant `config/cus
 - Cloudflare's tunnel visitor analytics can lag a few minutes, and how far back you can query depends on your plan. On plans that only allow short windows the first check looks back 1 hour instead of 24.
 - Very busy hostnames: each check reads up to 2,000 IP/hostname combinations.
 - ipinfo.io without a token allows a modest number of lookups per day; only new IPs are looked up, and results are cached.
+
+## Logo
+The icon and logo are original artwork made for this integration (not Cloudflare's or Home Assistant's logos). Home Assistant 2026.3 and later shows them on the Integrations page from `custom_components/cloudflare_monitor/brand/`. The SVG sources are in `images/`.
