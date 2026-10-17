@@ -198,6 +198,13 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
         except CloudflareAuthError as err:
             data.problems.append(f"Tunnels not readable (needs 'Cloudflare Tunnel: Read'): {err}")
             return
+        if not tunnels:
+            # Cloudflare can answer an empty list rather than an error when the token
+            # lacks the permission, so say so instead of going quiet
+            data.problems.append(
+                "Cloudflare returned no tunnels. If you have tunnels, the token "
+                "probably lacks 'Cloudflare Tunnel: Read'"
+            )
         for tunnel in tunnels:
             tid = tunnel["id"]
             remote = tunnel.get("remote_config")
@@ -302,6 +309,11 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
                 f"Access apps not readable (needs 'Access: Apps and Policies: Read'): {err}"
             )
             return
+        if not apps:
+            data.problems.append(
+                "Cloudflare returned no Access apps. If you have apps, the token "
+                "probably lacks 'Access: Apps and Policies: Read'"
+            )
         for app in apps:
             if app.get("type") in ("warp", "app_launcher", "biso"):
                 continue
