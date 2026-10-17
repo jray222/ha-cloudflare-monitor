@@ -1,0 +1,67 @@
+block_ip:
+  fields:
+    ip:
+      required: true
+      example: "203.0.113.7"
+      selector:
+        text:
+    note:
+      example: "Unknown login from abroad"
+      selector:
+        text:
+
+unblock_ip:
+  fields:
+    ip:
+      required: true
+      example: "203.0.113.7"
+      selector:
+        text:
+
+lock_access_app:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          filter:
+            integration: cloudflare_monitor
+            model: Access application
+
+unlock_access_app:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          filter:
+            integration: cloudflare_monitor
+            model: Access application
+
+disable_tunnel:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          filter:
+            integration: cloudflare_monitor
+            model: Tunnel
+
+enable_tunnel:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          filter:
+            integration: cloudflare_monitor
+            model: Tunnel
+
+forget_ip:
+  fields:
+    ip:
+      required: true
+      example: "203.0.113.7"
+      selector:
+        text:
