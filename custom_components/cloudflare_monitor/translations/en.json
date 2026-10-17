@@ -1,0 +1,139 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Cloudflare",
+        "description": "Create an API token at dash.cloudflare.com > My Profile > API Tokens > Create Custom Token. The README lists the permissions to tick. Read-only permissions are enough for alerts; Edit permissions are only needed for the block, lock and disable actions.",
+        "data": { "api_token": "API token" }
+      },
+      "account": {
+        "title": "Choose the Cloudflare account",
+        "data": { "account_id": "Account" }
+      },
+      "reauth_confirm": {
+        "title": "Cloudflare token needs replacing",
+        "description": "Cloudflare rejected the saved token. Paste a new one with the same permissions.",
+        "data": { "api_token": "API token" }
+      }
+    },
+    "error": {
+      "invalid_auth": "Cloudflare rejected this token, or it cannot list accounts (add Account Settings: Read).",
+      "cannot_connect": "Could not reach Cloudflare. Try again in a minute.",
+      "no_accounts": "This token does not give access to any account.",
+      "wrong_account": "This token belongs to a different Cloudflare account."
+    },
+    "abort": {
+      "already_configured": "This Cloudflare account is already set up.",
+      "reauth_successful": "Token updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cloudflare Monitor options",
+        "data": {
+          "scan_interval": "Check every",
+          "watch_access_logins": "Watch Access app logins",
+          "watch_tunnel_visitors": "Watch visitors to tunnel hostnames",
+          "watch_tunnel_connectors": "Watch where cloudflared connects from",
+          "new_ip_scope": "Treat an IP as new when it is",
+          "persistent_notification": "Show a notification in Home Assistant for each new IP",
+          "trusted_ips": "Trusted IPs (never alert)",
+          "ipinfo_token": "ipinfo.io token (optional)"
+        },
+        "data_description": {
+          "watch_tunnel_visitors": "Uses Cloudflare traffic analytics for the hostnames routed through your tunnels.",
+          "watch_tunnel_connectors": "Alerts if a tunnel connector shows up from an IP it has not used before, which can mean the tunnel token is used somewhere else.",
+          "trusted_ips": "One per line or comma separated. Ranges like 192.0.2.0/24 work.",
+          "ipinfo_token": "Leave empty for light use. A free token from ipinfo.io raises the lookup limit."
+        }
+      }
+    }
+  },
+  "selector": {
+    "new_ip_scope": {
+      "options": {
+        "account": "new to the whole account",
+        "source": "new to that app or hostname"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_new_ip": { "name": "Last new IP" },
+      "new_ips_24h": { "name": "New IPs last 24 hours" },
+      "failed_logins_24h": { "name": "Denied logins last 24 hours" },
+      "known_ips": { "name": "Known IPs" },
+      "blocked_ips": { "name": "Blocked IPs" },
+      "tunnel_status": {
+        "name": "Status",
+        "state": {
+          "healthy": "Healthy",
+          "degraded": "Degraded",
+          "down": "Down",
+          "inactive": "Inactive",
+          "unknown": "Unknown"
+        }
+      },
+      "tunnel_connectors": { "name": "Connections" },
+      "app_last_login": { "name": "Last login IP" }
+    },
+    "binary_sensor": {
+      "tunnel_connected": { "name": "Connected" },
+      "tunnel_paused": { "name": "Disabled from Home Assistant" },
+      "app_locked": { "name": "Logins" }
+    }
+  },
+  "services": {
+    "block_ip": {
+      "name": "Block IP",
+      "description": "Blocks an IP (or range) on every site in the Cloudflare account with an IP Access rule.",
+      "fields": {
+        "ip": { "name": "IP address", "description": "IPv4, IPv6, or a range like 203.0.113.0/24." },
+        "note": { "name": "Note", "description": "Shown next to the rule in Cloudflare." }
+      }
+    },
+    "unblock_ip": {
+      "name": "Unblock IP",
+      "description": "Removes the block rule for this IP.",
+      "fields": {
+        "ip": { "name": "IP address", "description": "The IP that was blocked." }
+      }
+    },
+    "lock_access_app": {
+      "name": "Lock Access app",
+      "description": "Adds a 'Block everyone' policy to the app so nobody can log in until it is unlocked.",
+      "fields": {
+        "device_id": { "name": "Access app", "description": "The app to lock." }
+      }
+    },
+    "unlock_access_app": {
+      "name": "Unlock Access app",
+      "description": "Removes the block policy added by Lock Access app.",
+      "fields": {
+        "device_id": { "name": "Access app", "description": "The app to unlock." }
+      }
+    },
+    "disable_tunnel": {
+      "name": "Disable tunnel",
+      "description": "Makes every hostname on the tunnel return an error page, and saves the current routes so Enable tunnel can restore them. Only for tunnels managed in the Cloudflare dashboard. If Home Assistant itself is reached through this tunnel, you will lose remote access through it.",
+      "fields": {
+        "device_id": { "name": "Tunnel", "description": "The tunnel to disable." }
+      }
+    },
+    "enable_tunnel": {
+      "name": "Enable tunnel",
+      "description": "Restores the routes saved when the tunnel was disabled.",
+      "fields": {
+        "device_id": { "name": "Tunnel", "description": "The tunnel to enable." }
+      }
+    },
+    "forget_ip": {
+      "name": "Forget IP",
+      "description": "Removes an IP from the known list, so the next time it shows up you get alerted again.",
+      "fields": {
+        "ip": { "name": "IP address", "description": "The IP to forget." }
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+blueprint:
+  name: Cloudflare - new IP alert with Block button
+  description: >
+    Sends a phone notification when Cloudflare Monitor sees a new IP on a tunnel
+    or Access app. The notification has a "Block IP" button; nothing is blocked
+    unless you press it.
+  domain: automation
+  source_url: https://github.com/jray222/ha-cloudflare-monitor/blob/main/blueprints/automation/cloudflare_monitor/new_ip_alert.yaml
+  input:
+    notify_device:
+      name: Phone
+      description: The phone (Home Assistant companion app) to notify.
+      selector:
+        device:
+          filter:
+            integration: mobile_app
+    wait_minutes:
+      name: How long the Block button stays active
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 720
+          unit_of_measurement: min
+
+mode: parallel
+max: 20
+
+triggers:
+  - trigger: event
+    event_type: cloudflare_monitor_new_ip
+
+variables:
+  ip: "{{ trigger.event.data.ip }}"
+  action_block: "{{ 'CF_BLOCK_' ~ context.id }}"
+  action_ignore: "{{ 'CF_IGNORE_' ~ context.id }}"
+
+actions:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: "New IP on {{ trigger.event.data.name }}"
+    message: >-
+      {{ ip }} from {{ [trigger.event.data.city, trigger.event.data.country] | select | join(', ') or 'unknown location' }}
+      ({{ trigger.event.data.isp or 'unknown network' }}).
+      {{ trigger.event.data.source }}{% if trigger.event.data.user_email %} by {{ trigger.event.data.user_email }}{% endif %}{% if trigger.event.data.login_allowed == false %}, login DENIED{% endif %}.
+    data:
+      url: "{{ trigger.event.data.abuseipdb_url }}"
+      actions:
+        - action: "{{ action_block }}"
+          title: Block IP
+          destructive: true
+        - action: "{{ action_ignore }}"
+          title: Looks fine
+  - wait_for_trigger:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "{{ action_block }}"
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: "{{ action_ignore }}"
+    timeout:
+      minutes: !input wait_minutes
+    continue_on_timeout: false
+  - if:
+      - condition: template
+        value_template: "{{ wait.trigger.event.data.action == action_block }}"
+    then:
+      - action: cloudflare_monitor.block_ip
+        data:
+          ip: "{{ ip }}"
+          note: "Blocked from phone notification"
