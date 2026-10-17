@@ -11,6 +11,17 @@ import aiohttp
 
 from .const import LOCK_POLICY_NAME
 
+VISITOR_FIELDS = [
+    "clientIP",
+    "clientRequestHTTPHost",
+    "clientCountryName",
+    "clientAsn",
+    "clientASNDescription",
+    "userAgent",
+    "edgeResponseStatus",
+]
+REQUIRED_VISITOR_FIELDS = {"clientIP", "clientRequestHTTPHost"}
+
 _LOGGER = logging.getLogger(__name__)
 
 API_BASE = "https://api.cloudflare.com/client/v4"
@@ -41,6 +52,7 @@ class CloudflareClient:
             "Content-Type": "application/json",
         }
         self.account_id = account_id
+        self._denied_fields: set[str] = set()
 
     # ------------------------------------------------------------------ basics
 
@@ -209,15 +221,23 @@ class CloudflareClient:
         # GraphQL input objects use bare keys, not quoted JSON keys
         for key in ("datetime_geq", "datetime_lt", "clientRequestHTTPHost_in"):
             flt = flt.replace(f'"{key}"', key)
-        query = (
-            "{ viewer { zones(filter: {zoneTag: %s}) {"
-            " httpRequestsAdaptiveGroups(limit: 2000, filter: %s, orderBy: [count_DESC]) {"
-            " count dimensions { clientIP clientRequestHTTPHost clientCountryName"
-            " clientAsn clientASNDescription userAgent edgeResponseStatus } } } } }"
-        ) % (json.dumps(zone_id), flt)
-        data = await self._request("POST", "/graphql", body={"query": query})
-        if data.get("errors"):
-            raise CloudflareError(f"GraphQL: {_errors(data)}")
+        # Cheaper plans reject some dimensions (Free has no clientAsn, for example).
+        # Drop each field Cloudflare refuses and ask again; clientIP is all we need.
+        fields = [f for f in VISITOR_FIELDS if f not in self._denied_fields]
+        while True:
+            query = (
+                "{ viewer { zones(filter: {zoneTag: %s}) {"
+                " httpRequestsAdaptiveGroups(limit: 2000, filter: %s, orderBy: [count_DESC]) {"
+                " count dimensions { %s } } } } }"
+            ) % (json.dumps(zone_id), flt, " ".join(fields))
+            data = await self._request("POST", "/graphql", body={"query": query})
+            if not data.get("errors"):
+                break
+            denied = _denied_field(_errors(data), fields)
+            if denied is None or denied in REQUIRED_VISITOR_FIELDS:
+                raise CloudflareError(f"GraphQL: {_errors(data)}")
+            self._denied_fields.add(denied)
+            fields.remove(denied)
         zones = ((data.get("data") or {}).get("viewer") or {}).get("zones") or []
         if not zones:
             return []
@@ -255,6 +275,17 @@ class CloudflareClient:
                 "DELETE", self._acct(f"/firewall/access_rules/rules/{rule['id']}")
             )
         return len(rules)
+
+
+def _denied_field(message: str, fields: list[str]) -> str | None:
+    """The field named in a "does not have access to the field 'x'" error."""
+    lowered = message.lower()
+    if "does not have access to the field" not in lowered:
+        return None
+    for field in fields:
+        if f"'{field.lower()}'" in lowered:
+            return field
+    return None
 
 
 def _errors(data: dict[str, Any]) -> str:

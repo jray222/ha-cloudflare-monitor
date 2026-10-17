@@ -178,3 +178,30 @@ def test_notification_shows_outside_text_literally() -> None:
     assert "`AS1 [click](https://evil.example)`" in text
     assert "`![x](https://evil.example/t.png)`" in text
     assert "`'code' breaker # heading`" in text
+
+
+async def test_visitor_query_drops_fields_the_plan_does_not_allow() -> None:
+    """Free plan zones reject clientAsn; the query retries without it."""
+    from datetime import UTC, datetime
+
+    from custom_components.cloudflare_monitor.api import CloudflareClient
+
+    client = CloudflareClient(None, "tok", ACCT)
+    queries: list[str] = []
+
+    async def fake_request(method, path, *, params=None, body=None):
+        queries.append(body["query"])
+        if "clientAsn " in body["query"]:
+            return {"data": None, "errors": [{"message": "zone 'zone1' does not have access to the field 'clientasn' from the path"}]}
+        return {"data": {"viewer": {"zones": [{"httpRequestsAdaptiveGroups": [visitor("192.0.2.9")]}]}}, "errors": None}
+
+    client._request = fake_request
+    now = datetime.now(UTC)
+    rows = await client.visitors_by_ip("zone1", ["ha.example.com"], now, now)
+    assert rows[0]["dimensions"]["clientIP"] == "192.0.2.9"
+    assert len(queries) == 2
+    assert "clientAsn " not in queries[1] and "clientIP" in queries[1]
+
+    # The denied field is remembered, so the next poll asks once
+    await client.visitors_by_ip("zone1", ["ha.example.com"], now, now)
+    assert len(queries) == 3
