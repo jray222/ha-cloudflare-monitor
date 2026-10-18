@@ -38,6 +38,7 @@ from .const import (
     CONF_NOTIFY,
     CONF_SCAN_INTERVAL,
     CONF_TRUSTED_IPS,
+    CONF_WATCHED_SITES,
     CONF_WATCH_ACCESS,
     CONF_WATCH_CONNECTORS,
     CONF_WATCH_TUNNELS,
@@ -203,6 +204,10 @@ class CloudflareMonitorOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_NOTIFY, default=opts.get(CONF_NOTIFY, True)
                 ): BooleanSelector(),
+                vol.Optional(
+                    CONF_WATCHED_SITES,
+                    description={"suggested_value": opts.get(CONF_WATCHED_SITES, "")},
+                ): TextSelector(TextSelectorConfig(multiline=True)),
                 vol.Optional(
                     CONF_TRUSTED_IPS,
                     description={"suggested_value": opts.get(CONF_TRUSTED_IPS, "")},

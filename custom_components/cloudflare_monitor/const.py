@@ -18,6 +18,7 @@ CONF_NEW_IP_SCOPE = "new_ip_scope"
 CONF_NOTIFY = "persistent_notification"
 CONF_IPINFO_TOKEN = "ipinfo_token"
 CONF_TRUSTED_IPS = "trusted_ips"
+CONF_WATCHED_SITES = "watched_sites"
 
 SCOPE_ACCOUNT = "account"
 SCOPE_SOURCE = "source"
@@ -43,6 +44,7 @@ SOURCE_LABELS = {
 MODEL_ACCOUNT = "Account"
 MODEL_TUNNEL = "Tunnel"
 MODEL_ACCESS_APP = "Access application"
+MODEL_SITE = "Watched site"
 
 # Names of the things this integration creates in Cloudflare, so they are
 # easy to recognise (and remove by hand) in the Cloudflare dashboard.
@@ -50,3 +52,4 @@ LOCK_POLICY_NAME = "Locked by Home Assistant"
 BLOCK_NOTE_PREFIX = "Blocked from Home Assistant"
 
 RECENT_ALERTS_KEPT = 25
+SITE_VISITORS_SHOWN = 25

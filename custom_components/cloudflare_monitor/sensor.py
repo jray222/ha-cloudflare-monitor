@@ -37,6 +37,12 @@ async def async_setup_entry(
                 TunnelStatusSensor(coordinator, "tunnel_status", kind, object_id),
                 TunnelConnectorsSensor(coordinator, "tunnel_connectors", kind, object_id),
             ]
+        if kind == "site":
+            return [
+                SiteLastVisitorSensor(coordinator, "site_last_visitor", kind, object_id),
+                SiteVisitorsSensor(coordinator, "site_visitors_24h", kind, object_id),
+                SiteNewIpsSensor(coordinator, "site_new_ips_24h", kind, object_id),
+            ]
         return [AppLastLoginSensor(coordinator, "app_last_login", kind, object_id)]
 
     entry.async_on_unload(add_entities_as_they_appear(coordinator, async_add_entities, build))
@@ -150,3 +156,57 @@ class AppLastLoginSensor(CloudflareEntity, SensorEntity):
             "domain": self.item.get("domain"),
             "app_id": self.item.get("id"),
         }
+
+
+class SiteLastVisitorSensor(CloudflareEntity, SensorEntity):
+    """IP of the latest visitor to a watched site (trusted IPs left out)."""
+
+    _attr_icon = "mdi:account-eye"
+
+    @property
+    def native_value(self) -> str | None:
+        visitors = self.item.get("visitors") or []
+        return visitors[0]["ip"] if visitors else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        visitors = self.item.get("visitors") or []
+        latest = visitors[0] if visitors else {}
+        return {
+            "country": latest.get("country"),
+            "requests": latest.get("requests"),
+            "user_agent": latest.get("user_agent"),
+            "seen_at": latest.get("last_seen"),
+            "tunnel": self.item.get("tunnel"),
+        }
+
+
+class SiteVisitorsSensor(CloudflareEntity, SensorEntity):
+    """How many different IPs visited a watched site in the last 24 hours."""
+
+    _attr_icon = "mdi:account-group"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> int:
+        return self.item.get("visitor_count", 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "recent": [
+                f"{v['last_seen'][:16]} {v['ip']} ({v['country'] or '?'}) {v['requests']} requests"
+                for v in self.item.get("visitors") or []
+            ]
+        }
+
+
+class SiteNewIpsSensor(CloudflareEntity, SensorEntity):
+    """New IPs (never seen before) on a watched site in the last 24 hours."""
+
+    _attr_icon = "mdi:alert-circle-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def native_value(self) -> int:
+        return self.item.get("new_ips_24h", 0)

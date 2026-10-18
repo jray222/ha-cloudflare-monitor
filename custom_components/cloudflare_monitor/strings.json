@@ -38,12 +38,14 @@
           "watch_tunnel_connectors": "Watch where cloudflared connects from",
           "new_ip_scope": "Treat an IP as new when it is",
           "persistent_notification": "Show a notification in Home Assistant for each new IP",
+          "watched_sites": "Sites to watch closely",
           "trusted_ips": "Trusted IPs (never alert)",
           "ipinfo_token": "ipinfo.io token (optional)"
         },
         "data_description": {
           "watch_tunnel_visitors": "Uses Cloudflare traffic analytics for the hostnames routed through your tunnels.",
           "watch_tunnel_connectors": "Alerts if a tunnel connector shows up from an IP it has not used before, which can mean the tunnel token is used somewhere else.",
+          "watched_sites": "Hostnames like media.example.com, one per line. Each gets its own device showing who visited in the last 24 hours. Must be a proxied hostname in this account.",
           "trusted_ips": "One per line or comma separated. Ranges like 192.0.2.0/24 work.",
           "ipinfo_token": "Leave empty for light use. A free token from ipinfo.io raises the lookup limit."
         }
@@ -76,7 +78,10 @@
         }
       },
       "tunnel_connectors": { "name": "Connections" },
-      "app_last_login": { "name": "Last login IP" }
+      "app_last_login": { "name": "Last login IP" },
+      "site_last_visitor": { "name": "Last visitor" },
+      "site_visitors_24h": { "name": "Visitors last 24 hours" },
+      "site_new_ips_24h": { "name": "New IPs last 24 hours" }
     },
     "binary_sensor": {
       "tunnel_connected": { "name": "Connected" },

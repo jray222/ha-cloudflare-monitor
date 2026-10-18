@@ -31,6 +31,8 @@ The first check after setup only **learns** the IPs already in your logs (Access
 
 **One device per Access app**: `Last login IP` (email, allowed, time, country as attributes), `Logins` (shows Locked when the app is locked)
 
+**One device per watched site** (see Options): `Last visitor`, `Visitors last 24 hours` (the latest 25 visitors as the `recent` attribute), `New IPs last 24 hours`. Useful for a hostname with no Access login in front of it. Trusted IPs are left out.
+
 **Event** `cloudflare_monitor_new_ip` for every new IP, to use as an automation trigger. It carries: `ip`, `source`, `name`, `hostname`, `user_email`, `login_allowed`, `identity_provider`, `city`, `region`, `country`, `isp`, `reverse_dns`, `map_location`, `timezone`, `requests`, `http_statuses`, `user_agents`, `seen_at`, `already_blocked`, `abuseipdb_url`, `ipinfo_url`.
 
 **A notification** in the Home Assistant sidebar for each new IP (can be turned off in the options).
@@ -85,6 +87,7 @@ Copy `custom_components/cloudflare_monitor` into your Home Assistant `config/cus
 - Which sources to watch (Access logins, tunnel visitors, tunnel connectors)
 - Whether an IP is "new" for the whole account (default) or separately for each app or hostname
 - Show a Home Assistant notification for each new IP
+- Sites to watch closely: hostnames that get their own device listing every visitor, not only new ones
 - Trusted IPs that never alert (your home IP, office, ranges like `192.0.2.0/24`)
 - Optional ipinfo.io token (free) if you see a lot of new IPs
 
