@@ -30,12 +30,12 @@ triggers:
   - trigger: event
     event_type: cloudflare_monitor_new_ip
 
-variables:
-  ip: "{{ trigger.event.data.ip }}"
-  action_block: "{{ 'CF_BLOCK_' ~ context.id }}"
-  action_ignore: "{{ 'CF_IGNORE_' ~ context.id }}"
-
 actions:
+  # context is only defined once the actions run, so these live here
+  - variables:
+      ip: "{{ trigger.event.data.ip }}"
+      action_block: "{{ 'CF_BLOCK_' ~ context.id }}"
+      action_ignore: "{{ 'CF_IGNORE_' ~ context.id }}"
   - domain: mobile_app
     type: notify
     device_id: !input notify_device
