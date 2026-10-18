@@ -200,6 +200,11 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
         ]
         data.new_ips_24h = len(self.state["alert_times"])
         data.failed_logins_24h = len(self.state["failed_login_times"])
+        # IPs trusted after they alerted drop out of the list too
+        trusted = self._trusted()
+        self.state["recent_alerts"] = [
+            a for a in self.state["recent_alerts"] if not self._is_trusted(a["ip"], trusted)
+        ]
         data.recent_alerts = list(self.state["recent_alerts"])
         data.known_ip_count = len({k.split("|")[-1] for k in self.state["known"]})
         self._build_sites(data, cutoff)
