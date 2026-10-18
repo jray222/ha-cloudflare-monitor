@@ -26,6 +26,7 @@ from .const import (
     CONF_NOTIFY,
     CONF_SCAN_INTERVAL,
     CONF_TRUSTED_IPS,
+    CONF_WATCHED_SITES,
     CONF_WATCH_ACCESS,
     CONF_WATCH_CONNECTORS,
     CONF_WATCH_TUNNELS,
@@ -36,6 +37,7 @@ from .const import (
     LOCK_POLICY_NAME,
     RECENT_ALERTS_KEPT,
     SCOPE_SOURCE,
+    SITE_VISITORS_SHOWN,
     SOURCE_ACCESS,
     SOURCE_CONNECTOR,
     SOURCE_LABELS,
@@ -80,6 +82,7 @@ class MonitorData:
 
     tunnels: dict[str, dict[str, Any]] = field(default_factory=dict)
     apps: dict[str, dict[str, Any]] = field(default_factory=dict)
+    sites: dict[str, dict[str, Any]] = field(default_factory=dict)
     blocked_ips: list[dict[str, Any]] = field(default_factory=list)
     recent_alerts: list[dict[str, Any]] = field(default_factory=list)
     new_ips_24h: int = 0
@@ -134,6 +137,16 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
                 _LOGGER.warning("Ignoring trusted IP entry that is not an IP: %s", part)
         return nets
 
+    def _watched_sites(self) -> list[str]:
+        raw = self._opt(CONF_WATCHED_SITES, "") or ""
+        sites = []
+        for part in raw.replace("\n", ",").split(","):
+            host = part.strip().lower().removeprefix("https://").removeprefix("http://")
+            host = host.split("/")[0]
+            if host and host not in sites:
+                sites.append(host)
+        return sites
+
     # ------------------------------------------------------------------- store
 
     async def async_load(self) -> None:
@@ -146,6 +159,8 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
         self.state.setdefault("tunnel_backups", {})
         self.state.setdefault("app_last_login", {})
         self.state.setdefault("baseline_done", False)
+        self.state.setdefault("site_visitors", {})
+        self.state.setdefault("site_alert_times", {})
 
     def _save(self) -> None:
         self._store.async_delay_save(lambda: self.state, 5)
@@ -185,8 +200,14 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
         ]
         data.new_ips_24h = len(self.state["alert_times"])
         data.failed_logins_24h = len(self.state["failed_login_times"])
+        # IPs trusted after they alerted drop out of the list too
+        trusted = self._trusted()
+        self.state["recent_alerts"] = [
+            a for a in self.state["recent_alerts"] if not self._is_trusted(a["ip"], trusted)
+        ]
         data.recent_alerts = list(self.state["recent_alerts"])
         data.known_ip_count = len({k.split("|")[-1] for k in self.state["known"]})
+        self._build_sites(data, cutoff)
         for problem in data.problems:
             _LOGGER.warning("Cloudflare Monitor: %s", problem)
         self._save()
@@ -397,6 +418,11 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
         for host, info in self._hostnames.items():
             if info.get("zone_id") and not host.startswith("*"):
                 by_zone.setdefault(info["zone_id"], []).append(host)
+        for host in self._watched_sites():
+            # A watched site may not be on a tunnel (or the config was unreadable)
+            zone = self._zone_for(host)
+            if zone and host not in by_zone.get(zone, []):
+                by_zone.setdefault(zone, []).append(host)
         if not by_zone:
             return
         since_raw = self.state.get("graphql_since")
@@ -480,12 +506,23 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
         baseline = not self.state["baseline_done"]
         blocked = {b["ip"] for b in data.blocked_ips}
         now_iso = dt_util.utcnow().isoformat()
+        watched = set(self._watched_sites())
 
         for s in sightings:
             try:
                 ipaddress.ip_address(s.ip)
             except ValueError:
                 continue  # never put something that is not an IP into links or rules
+            site = s.hostname.lower()
+            if s.source_type == SOURCE_TUNNEL and site in watched and not self._is_trusted(s.ip, trusted):
+                visitors = self.state["site_visitors"].setdefault(site, {})
+                seen = visitors.get(s.ip) or {"requests": 0}
+                visitors[s.ip] = {
+                    "last_seen": now_iso,
+                    "country": s.country or seen.get("country", ""),
+                    "requests": seen["requests"] + s.requests,
+                    "user_agent": next(iter(sorted(s.user_agents)), seen.get("user_agent", "")),
+                }
             key = f"{s.source_type}:{s.source_id}|{s.ip}" if per_source else s.ip
             # Connector IPs are always tracked per tunnel: a new one is notable
             if s.source_type == SOURCE_CONNECTOR:
@@ -497,6 +534,8 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
             known[key] = {"first_seen": now_iso, "last_seen": now_iso, "where": s.name}
             if baseline or self._is_trusted(s.ip, trusted):
                 continue
+            if s.source_type == SOURCE_TUNNEL and site in watched:
+                self.state["site_alert_times"].setdefault(site, []).append(now_iso)
             await self._alert(s, s.ip in blocked)
 
         if baseline:
@@ -505,6 +544,33 @@ class CloudflareMonitorCoordinator(DataUpdateCoordinator[MonitorData]):
                 "Cloudflare Monitor learned %s existing IPs; alerts start from the next poll",
                 len(known),
             )
+
+    def _build_sites(self, data: MonitorData, cutoff: str) -> None:
+        """Visitors of each watched site over the last 24 hours."""
+        watched = self._watched_sites()
+        for site in list(self.state["site_visitors"]):
+            if site not in watched:
+                self.state["site_visitors"].pop(site)
+                self.state["site_alert_times"].pop(site, None)
+        for site in watched:
+            visitors = {
+                ip: v
+                for ip, v in self.state["site_visitors"].get(site, {}).items()
+                if v["last_seen"] >= cutoff
+            }
+            self.state["site_visitors"][site] = visitors
+            alerts = [t for t in self.state["site_alert_times"].get(site, []) if t >= cutoff]
+            self.state["site_alert_times"][site] = alerts
+            ordered = sorted(visitors.items(), key=lambda kv: kv[1]["last_seen"], reverse=True)
+            tunnel = self._hostnames.get(site, {}).get("tunnel_id", "")
+            data.sites[site] = {
+                "id": site,
+                "name": site,
+                "tunnel": data.tunnels.get(tunnel, {}).get("name", ""),
+                "visitors": [{"ip": ip, **v} for ip, v in ordered[:SITE_VISITORS_SHOWN]],
+                "visitor_count": len(visitors),
+                "new_ips_24h": len(alerts),
+            }
 
     @staticmethod
     def _is_trusted(ip: str, trusted: list) -> bool:

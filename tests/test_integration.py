@@ -205,3 +205,50 @@ async def test_visitor_query_drops_fields_the_plan_does_not_allow() -> None:
     # The denied field is remembered, so the next poll asks once
     await client.visitors_by_ip("zone1", ["ha.example.com"], now, now)
     assert len(queries) == 3
+
+
+async def test_watched_site_lists_its_visitors(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    mock_cloudflare(aioclient_mock, [], [visitor("192.0.2.2", 5), visitor("203.0.113.9", 2)])
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=ACCT,
+        data={"api_token": "tok", "account_id": ACCT, "account_name": "Home"},
+        options={"watched_sites": "https://HA.example.com/\n", "trusted_ips": "203.0.113.0/24"},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Trusted IPs are left out of the visitor list
+    assert hass.states.get("sensor.site_ha_example_com_visitors_last_24_hours").state == "1"
+    assert hass.states.get("sensor.site_ha_example_com_last_visitor").state == "192.0.2.2"
+    assert hass.states.get("sensor.site_ha_example_com_new_ips_last_24_hours").state == "0"
+
+    aioclient_mock.clear_requests()
+    mock_cloudflare(aioclient_mock, [], [visitor("192.0.2.2"), visitor("198.51.100.77")])
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.site_ha_example_com_visitors_last_24_hours").state == "2"
+    assert hass.states.get("sensor.site_ha_example_com_new_ips_last_24_hours").state == "1"
+    recent = hass.states.get("sensor.site_ha_example_com_visitors_last_24_hours").attributes["recent"]
+    assert any("192.0.2.2 (US) 8 requests" in line for line in recent)
+
+
+async def test_trusting_an_ip_clears_its_old_alerts(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
+    mock_cloudflare(aioclient_mock, [], [])
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=ACCT,
+        data={"api_token": "tok", "account_id": ACCT, "account_name": "Home"},
+        options={"trusted_ips": "160.79.104.0/21"},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    coordinator.state["recent_alerts"] = [
+        {"ip": "160.79.106.173", "seen_at": "2026-10-17T22:58", "country": "US", "source": "Tunnel visitor", "name": "ha"},
+        {"ip": "81.2.69.160", "seen_at": "2026-10-17T22:50", "country": "PT", "source": "Tunnel visitor", "name": "ha"},
+    ]
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.cloudflare_home_last_new_ip").state == "81.2.69.160"

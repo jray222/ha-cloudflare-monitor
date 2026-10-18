@@ -26,7 +26,9 @@ async def async_setup_entry(
                 TunnelConnected(coordinator, "tunnel_connected", kind, object_id),
                 TunnelPaused(coordinator, "tunnel_paused", kind, object_id),
             ]
-        return [AppLocked(coordinator, "app_locked", kind, object_id)]
+        if kind == "app":
+            return [AppLocked(coordinator, "app_locked", kind, object_id)]
+        return []
 
     entry.async_on_unload(add_entities_as_they_appear(coordinator, async_add_entities, build))
 

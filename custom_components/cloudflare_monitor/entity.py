@@ -14,13 +14,14 @@ from .const import (
     MANUFACTURER,
     MODEL_ACCESS_APP,
     MODEL_ACCOUNT,
+    MODEL_SITE,
     MODEL_TUNNEL,
 )
 from .coordinator import CloudflareMonitorCoordinator
 
 
 class CloudflareEntity(CoordinatorEntity[CloudflareMonitorCoordinator]):
-    """Base: one of the account, a tunnel, or an Access app."""
+    """Base: one of the account, a tunnel, an Access app, or a watched site."""
 
     _attr_has_entity_name = True
 
@@ -57,6 +58,16 @@ class CloudflareEntity(CoordinatorEntity[CloudflareMonitorCoordinator]):
                 via_device=account_ident,
                 configuration_url="https://one.dash.cloudflare.com/",
             )
+        elif kind == "site":
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, f"site_{object_id}")},
+                name=f"Site {object_id}",
+                manufacturer=MANUFACTURER,
+                model=MODEL_SITE,
+                entry_type=DeviceEntryType.SERVICE,
+                via_device=account_ident,
+                configuration_url=f"https://{object_id}/",
+            )
         else:
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, f"app_{object_id}")},
@@ -70,9 +81,9 @@ class CloudflareEntity(CoordinatorEntity[CloudflareMonitorCoordinator]):
 
     @property
     def item(self) -> dict:
-        """The tunnel or app this entity belongs to (empty if it disappeared)."""
+        """The tunnel, app or site this entity belongs to (empty if it disappeared)."""
         data = self.coordinator.data
-        source = data.tunnels if self.kind == "tunnel" else data.apps
+        source = {"tunnel": data.tunnels, "site": data.sites}.get(self.kind, data.apps)
         return source.get(self.object_id, {})
 
     @property
@@ -87,7 +98,7 @@ def add_entities_as_they_appear(
     async_add_entities: Callable[[Iterable[Entity]], None],
     build: Callable[[str, str], list[Entity]],
 ) -> Callable[[], None]:
-    """Add entities for tunnels / apps now, and for any created later."""
+    """Add entities for tunnels / apps / watched sites now, and for any created later."""
     seen: set[tuple[str, str]] = set()
 
     def check() -> None:
@@ -95,6 +106,7 @@ def add_entities_as_they_appear(
         for kind, items in (
             ("tunnel", coordinator.data.tunnels),
             ("app", coordinator.data.apps),
+            ("site", coordinator.data.sites),
         ):
             for object_id in items:
                 if (kind, object_id) not in seen:
