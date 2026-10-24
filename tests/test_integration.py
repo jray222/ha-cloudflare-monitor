@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import device_registry as dr
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_capture_events
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
@@ -95,7 +98,11 @@ async def test_config_flow(hass: HomeAssistant, aioclient_mock: AiohttpClientMoc
 
 
 async def test_new_ip_alert_and_actions(hass: HomeAssistant, aioclient_mock: AiohttpClientMocker) -> None:
-    mock_cloudflare(aioclient_mock, [login("192.0.2.1", "2026-10-17T09:00:00Z")], [visitor("192.0.2.2")])
+    # Recent timestamps, so the denied login still counts in the 24 hour window
+    now = dt_util.utcnow()
+    earlier = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    later = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    mock_cloudflare(aioclient_mock, [login("192.0.2.1", earlier)], [visitor("192.0.2.2")])
     entry = MockConfigEntry(
         domain=DOMAIN, unique_id=ACCT,
         data={"api_token": "tok", "account_id": ACCT, "account_name": "Home"},
@@ -115,7 +122,7 @@ async def test_new_ip_alert_and_actions(hass: HomeAssistant, aioclient_mock: Aio
     aioclient_mock.clear_requests()
     mock_cloudflare(
         aioclient_mock,
-        [login("192.0.2.1", "2026-10-17T09:00:00Z"), login("81.2.69.160", "2026-10-17T11:00:00Z", allowed=False)],
+        [login("192.0.2.1", earlier), login("81.2.69.160", later, allowed=False)],
         [visitor("192.0.2.2")],
     )
     await entry.runtime_data.async_refresh()
